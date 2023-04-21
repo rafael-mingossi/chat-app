@@ -22,7 +22,7 @@ function getGoogleCredentials() {
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: UpstashRedisAdapter(db),
+  adapter: UpstashRedisAdapter(db), //This adapter will bring all the information from the logged-in user and save to the DB
   session: {
     strategy: "jwt",
   },
