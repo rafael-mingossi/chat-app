@@ -1,9 +1,72 @@
 import { addFriendValidator } from "@/lib/validations/add-friend";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { fetchRedis } from "@/helpers/redis";
+import { db } from "@/lib/db";
+import { z } from "zod";
 
 export async function POST(req: Request) {
+  ////THIS FUNCTION WILL AVOID NEXTJS CACHING BEHAVIOUR
   try {
     const body = await req.json();
 
     const { email: emailToAdd } = addFriendValidator.parse(body.email);
-  } catch (error) {}
+
+    const idToAdd = (await fetchRedis(
+      "get",
+      `user:email:${emailToAdd}`
+    )) as string;
+
+    //////VALIDATION 1 - trying to add an email that is not in the system
+    if (!idToAdd) {
+      return new Response("This person does not exist", { status: 400 });
+    }
+
+    const session = await getServerSession(authOptions);
+
+    //////VALIDATION 2 - check if session is valid
+    if (!session) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    //////VALIDATION 3 - trying to add the same email as current user
+    if (idToAdd === session.user.id) {
+      return new Response("You cannot add yourself as a friend", {
+        status: 400,
+      });
+    }
+
+    //////VALIDATION 4 - check if user is already added
+    const isAlreadyAdded = (await fetchRedis(
+      "sismember",
+      `user:${idToAdd}:incoming_friend_requests`,
+      session.user.id
+    )) as 0 | 1;
+
+    if (isAlreadyAdded) {
+      return new Response("Already added this user", { status: 400 });
+    }
+
+    //////VALIDATION 5 - check if user is already friends
+    const isAlreadyFriends = (await fetchRedis(
+      "sismember",
+      `user:${session.user.id}:friends`,
+      idToAdd
+    )) as 0 | 1;
+
+    if (isAlreadyFriends) {
+      return new Response("Already friends with this user", { status: 400 });
+    }
+
+    //Send friend request
+    await db.sadd(`user:${idToAdd}:incoming_friend_requests`, session.user.id);
+
+    return new Response("OK");
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return new Response("Invalid request payload", { status: 422 });
+    }
+
+    return new Response("Invalid request", { status: 400 });
+  }
 }
