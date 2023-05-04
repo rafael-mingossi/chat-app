@@ -4,6 +4,10 @@ import { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Icons, Icon } from "@/components/Icons";
+import Image from "next/image";
+import SignOutButton from "@/components/SignOutButton";
+import FriendRequestsSidebarOption from "@/components/FriendRequestsSidebarOption";
+import { fetchRedis } from "@/helpers/redis";
 
 interface LayoutProps {
   children: ReactNode;
@@ -29,6 +33,13 @@ const Layout = async ({ children }: LayoutProps) => {
   const session = await getServerSession(authOptions);
 
   if (!session) notFound();
+
+  const unseenRequestCount = (
+    (await fetchRedis(
+      "smembers",
+      `user:${session.user.id}:incoming_friend_requests`
+    )) as User[]
+  ).length;
 
   return (
     <div className="w-full flex h-screen">
@@ -68,7 +79,38 @@ const Layout = async ({ children }: LayoutProps) => {
                 })}
               </ul>
             </li>
-            <li></li>
+
+            <li>
+              <FriendRequestsSidebarOption
+                initialUnseenRequestCount={unseenRequestCount}
+                sessionId={session.user.id}
+              />
+            </li>
+
+            <li className="-mx-6 mt-auto flex items-center">
+              <div className="flex flex-1 items-center gap-x-4 px-6 py-3 text-sm font-semibold leading-6 text-gray-900">
+                <div className="relative h-8 w-8 bg-gray-50">
+                  <Image
+                    fill
+                    referrerPolicy="no-referrer"
+                    className="rounded-full"
+                    src={session?.user?.image || ""}
+                    alt="Profile Picture"
+                  />
+                </div>
+
+                <span className="sr-only"> Your Profile</span>
+
+                <div className="flex flex-col">
+                  <span aria-hidden="true">{session.user.name}</span>
+                  <span aria-hidden="true" className="text-xs text-zinc-400">
+                    {session?.user?.email}
+                  </span>
+                </div>
+              </div>
+
+              <SignOutButton className="h-full aspect-square" />
+            </li>
           </ul>
         </nav>
       </div>
